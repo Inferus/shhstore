@@ -1,0 +1,11 @@
+{
+  "name": "shhstore",
+  "owner": { "name": "seva" },
+  "plugins": [
+    {
+      "name": "shhstore",
+      "source": "./",
+      "description": "Secrets for Claude without showing them to Claude: private input, OS keychain, {{shh:NAME}} placeholders."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "shhstore",
+  "version": "0.1.0",
+  "description": "Secrets for Claude without showing them to Claude: enter a key in a private field, keep it in the OS keychain, insert it into .env/configs via {{shh:NAME}} placeholders.",
+  "types": "./types/index.d.ts",
+  "license": "MIT",
+  "author": {
+    "name": "seva"
+  }
+}
