@@ -57,9 +57,9 @@ test('a key pasted into the prompt is stored and replaced by a placeholder', asy
   })
   await start($)
 
-  await $.prompt.submit({ text: `вот мой ключ ${KEY} подключи openai` } as any)
+  await $.prompt.submit({ text: `here's my key ${KEY}, hook up openai` } as any)
 
-  expect(reached?.text).toBe('вот мой ключ {{shh:OPENAI_API_KEY}} подключи openai')
+  expect(reached?.text).toBe("here's my key {{shh:OPENAI_API_KEY}}, hook up openai")
   expect(reached?.text.includes(KEY)).toBe(false)
   expect((reached?.context ?? []).join('\n').includes('{{shh:OPENAI_API_KEY}}')).toBe(true)
   expect(host.keychain.get('OPENAI_API_KEY')).toBe(KEY)
@@ -156,4 +156,20 @@ test('request_secret opens the pane, the typed value is stored, the model gets o
   expect(host.keychain.get('OPENAI_API_KEY')).toBe(KEY)
   expect(JSON.stringify(r).includes(KEY)).toBe(false)
   expect(JSON.stringify(r).includes('Stored OPENAI_API_KEY')).toBe(true)
+})
+
+test('a backslash writes the placeholder literally instead of expanding it', async ($, on) => {
+  fakeHost(on)
+  let content = ''
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('tool.call', (_, e: any) => {
+    content = e.content
+    return { result: { type: 'create', filePath: e.file_path, content: e.content, structuredPatch: [] } }
+  })
+  await start($)
+  await $.prompt.submit({ text: KEY } as any)
+
+  await $.tool.call({ tool: 'Write', file_path: '/p/README.md', content: 'use \\{{shh:OPENAI_API_KEY}} or \\{{shh:NOPE}}' })
+
+  expect(content).toBe('use {{shh:OPENAI_API_KEY}} or {{shh:NOPE}}')
 })

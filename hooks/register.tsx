@@ -9,7 +9,7 @@ const PLUGIN = 'shhstore'
 const PANE = 'shh-input'
 const SERVICE = 'shhstore'
 const NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/
-const PLACEHOLDER_RE = /\{\{shh:([A-Za-z][A-Za-z0-9_]*)\}\}/g
+const PLACEHOLDER_RE = /(\\?)\{\{shh:([A-Za-z][A-Za-z0-9_]*)\}\}/g
 // Values shorter than this are not redacted: too likely to collide with
 // ordinary text ("true", "8080") and wreck unrelated output.
 const MIN_REDACT = 6
@@ -106,14 +106,17 @@ function containsSecret(value: unknown): boolean {
 function placeholdersIn(value: unknown): string[] {
   const names = new Set<string>()
   deepMap(value, s => {
-    for (const m of s.matchAll(PLACEHOLDER_RE)) if (m[1]) names.add(m[1].toUpperCase())
+    for (const m of s.matchAll(PLACEHOLDER_RE)) if (m[2] && !m[1]) names.add(m[2].toUpperCase())
     return s
   })
   return [...names]
 }
 
 function expandString(text: string): string {
-  return text.replace(PLACEHOLDER_RE, (all, n: string) => secrets.get(n.toUpperCase()) ?? all)
+  // A backslash before the placeholder writes it out literally (docs, examples).
+  return text.replace(PLACEHOLDER_RE, (all: string, esc: string, n: string) =>
+    esc ? all.slice(1) : (secrets.get(n.toUpperCase()) ?? all),
+  )
 }
 
 function envLiteral(value: string): string {
@@ -334,7 +337,9 @@ const TOOL_GUIDE =
   'the placeholder is replaced with the real value right before the tool runs, and every tool output has known secret values ' +
   'replaced back with the placeholder — so you can e.g. Write `OPENAI_API_KEY={{shh:OPENAI_API_KEY}}` into .env, or run ' +
   '`curl -H "Authorization: Bearer {{shh:OPENAI_API_KEY}}" ...`, without ever seeing the key. Reading a .env shows placeholders ' +
-  'for stored values. Never try to decode, print, base64 or otherwise reveal a secret.'
+  'for stored values. To write the placeholder text itself (docs, examples), prefix it with a backslash: ' +
+  '\\{{shh:NAME}} is written out as the literal {{shh:NAME}}. ' +
+  'Never try to decode, print, base64 or otherwise reveal a secret.'
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -459,7 +464,9 @@ export const register: Register = on => {
 
     let input = e
     const wanted = placeholdersIn(e)
-    if (wanted.length > 0) {
+    // Any placeholder, escaped ones included: an escape needs its backslash dropped.
+    const hasAny = JSON.stringify(e).includes('{{' + 'shh:')
+    if (hasAny) {
       const missing = wanted.filter(n => !secrets.has(n))
       if (missing.length > 0 && (EXPANDING_TOOLS.has(e.tool) || e.tool.startsWith('mcp__'))) {
         return { deny: `Unknown secret(s): ${missing.join(', ')}. Call mcp__shhstore__list_secrets or mcp__shhstore__request_secret.` }

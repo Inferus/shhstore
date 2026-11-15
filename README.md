@@ -1,64 +1,70 @@
 # shhstore
 
-Плагин для Claude Code: API-ключи и токены без утечки в чат. Вы вводите ключ в приватное поле, он ложится в системную связку ключей (macOS Keychain или libsecret на Linux), а Claude работает только с плейсхолдером `{{shh:NAME}}` и может вставить ключ в любой `.env`, конфиг или команду, не видя самого значения.
+A Claude Code plugin for API keys, tokens and passwords that never land in the chat. You type the key into a private field. It goes straight to the OS keychain (macOS Keychain, or libsecret on Linux). Claude only ever works with a placeholder, `{{shh:NAME}}`, and can still put the real key into any `.env` file, config or shell command without seeing it.
 
-## Как это работает
+## How it works
 
-| Что | Как |
+| What | How |
 | --- | --- |
-| **Ввод ключа** | Claude вызывает `request_secret`, и над промптом открывается панель с полем ввода. Значение уходит сразу в Keychain, в разговор не попадает. Можно ввести и самому: `/secret OPENAI_API_KEY`. Кнопка «Hidden input (macOS dialog)» открывает системное окно, где ввод скрыт точками. |
-| **Ключ, вставленный прямо в чат** | Перехватывается до отправки. Распознаются известные форматы (OpenAI, Anthropic, GitHub, Stripe, AWS, Google, Slack, Groq, HF, xAI, Telegram, приватные ключи и т.д.) и строки `.env` вида `*_KEY=`, `*_TOKEN=`, `*_SECRET=`, `*_PASSWORD=`. Ключ сохраняется, а модель получает `{{shh:OPENAI_API_KEY}}`. |
-| **Подстановка** | В `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` и MCP-инструментах `{{shh:NAME}}` заменяется настоящим значением прямо перед запуском. Если такого секрета нет, вызов отклоняется, и в файл не попадёт буквальный `{{shh:...}}`. |
-| **Маскировка** | В выводе любого инструмента (cat, Read, Grep, логи, ошибки, diff изменённых файлов, @-упоминания) известные значения заменяются обратно на `{{shh:NAME}}`. Поэтому Claude может читать `.env` и видит там плейсхолдеры. |
-| **Запись в .env** | `write_secret_to_env(name, file, var?)` добавляет или обновляет `VAR=значение` и не трогает остальные строки. Новый файл создаётся с `chmod 600`. Если файл не в `.gitignore`, плагин предупредит. |
+| **Entering a key** | Claude calls `request_secret` and a pane with an input field opens above the prompt. The value goes straight to the keychain and never enters the conversation. You can also start it yourself with `/secret OPENAI_API_KEY`. On macOS, the **Hidden input** button opens a native dialog that masks what you type. |
+| **A key pasted into the chat** | It is caught before the message is sent. The plugin recognizes common key formats (OpenAI, Anthropic, OpenRouter, GitHub, GitLab, Stripe, AWS, Google, Slack, Groq, Hugging Face, xAI, Perplexity, Resend, SendGrid, npm, Telegram, PEM private keys) and `.env` lines such as `*_KEY=`, `*_TOKEN=`, `*_SECRET=` and `*_PASSWORD=`. The key is stored and the model sees `{{shh:OPENAI_API_KEY}}` instead. |
+| **Using a key** | In `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and MCP tool calls, `{{shh:NAME}}` is replaced with the real value right before the tool runs. A placeholder naming an unknown secret makes the call fail, so the literal placeholder never ends up in a file. |
+| **Redaction** | Every stored value is replaced back with its placeholder in every tool result (cat, Read, Grep, logs, errors) and in what the engine injects (changed-file diffs, @-mentions, hook output). This means Claude can read a `.env` file and sees only placeholders in it. |
+| **Writing a .env** | `write_secret_to_env(name, file, var?)` adds or updates `VAR=value` and leaves the other lines alone. A new file is created with `chmod 600`. If the file is not git-ignored, the tool's answer says so. |
+| **Writing the placeholder itself** | For docs and examples, put a backslash in front: `\{{shh:NAME}}` is written out as the literal text `{{shh:NAME}}`, not expanded. |
 
-Инструменты для модели: `request_secret`, `list_secrets`, `write_secret_to_env`, `delete_secret` (удаление спрашивает подтверждение).
-Команды: `/secret NAME` (ввести ключ), `/secrets` (список имён без значений).
+Tools the model gets: `request_secret`, `list_secrets`, `write_secret_to_env`, `delete_secret` (asks you to confirm before deleting).
+Slash commands: `/secret NAME` (enter a secret), `/secrets` (list names, never values).
 
-## Примеры
+## Examples
 
 ```
-вы:     подключи OpenAI к проекту
-claude: → request_secret(OPENAI_API_KEY)   ← вы вставляете ключ в панель
+you:    hook this project up to OpenAI
+claude: → request_secret(OPENAI_API_KEY)     ← you paste the key into the pane
         → write_secret_to_env(OPENAI_API_KEY, .env)
         → Bash: curl -H "Authorization: Bearer {{shh:OPENAI_API_KEY}}" https://api.openai.com/v1/models
 ```
 
 ```
-вы:     вот ключ sk-proj-abc…xyz, пропиши в apps/web/.env.local как NEXT_OPENAI_KEY
-модель видит: вот ключ {{shh:OPENAI_API_KEY}}, пропиши в apps/web/.env.local как NEXT_OPENAI_KEY
+you:             here's the key sk-proj-abc…xyz, put it in apps/web/.env.local as NEXT_OPENAI_KEY
+the model sees:  here's the key {{shh:OPENAI_API_KEY}}, put it in apps/web/.env.local as NEXT_OPENAI_KEY
 ```
 
-## Установка
+## Install
 
-В терминальной сессии Claude Code:
+In a Claude Code terminal session:
 
 ```
 /plugin install shhstore --marketplace Inferus/shhstore
 ```
 
-Затем `y`, чтобы добавить маркетплейс, и область установки (`user` — для всех проектов).
+Answer `y` to add the marketplace, then pick a scope (`user` makes it work in every project).
 
-Из shell:
+From a shell:
 
 ```
 claude plugin install shhstore --marketplace Inferus/shhstore
 ```
 
-Нужен Claude Code с поддержкой function-hook модов (≥ 2.1.32x; API в раннем доступе и может меняться).
-Тесты: `claude plugin test .`  Проверка: `claude plugin validate .`
+You need a Claude Code build that supports function-hook mods (2.1.32x or later). That API is in early access and may change between releases.
 
-## Где лежат ключи
+Development: `claude plugin test .` runs the tests and `claude plugin validate .` checks the plugin.
 
-- macOS: Keychain, сервис `shhstore`, аккаунт `NAME`. Посмотреть или удалить можно в «Связке ключей», искать по слову `shhstore`.
-- Linux: libsecret (`secret-tool`), атрибуты `service=shhstore account=NAME`.
-- Если ни того, ни другого нет, ключи хранятся открытым текстом в JSON-хранилище плагина в `~/.claude` (при старте об этом будет сообщение).
-- Список имён (без значений) лежит в хранилище плагина.
+## Where secrets are stored
 
-## Ограничения (важно)
+- **macOS:** the Keychain, service `shhstore`, account `NAME`. To see or delete them, open Keychain Access and search for `shhstore`.
+- **Linux:** libsecret (`secret-tool`), with attributes `service=shhstore account=NAME`.
+- **Neither available:** the plugin's own JSON store under `~/.claude`, in plain text. A notice says so when the session starts.
+- The list of names (without values) is kept in the plugin's store.
 
-- Плагин защищает от **случайной** утечки. От злонамеренной модели или prompt injection он не защищает: команда с подстановкой может отправить ключ куда угодно или вывести его закодированным (base64, по символам), и маскировка ловит только точное значение.
-- В панели ввода текст виден на экране, хотя в модель он не уходит. Если нужен скрытый ввод, используйте кнопку с диалогом macOS.
-- Значения короче 6 символов не маскируются, чтобы не портить обычный вывод.
-- Маскируются только значения, сохранённые в shhstore. Ключ, который уже лежит в `.env`, но не сохранён, модель увидит. Сохраните его через `/secret` или вставьте строку `KEY=...` в чат, и плагин его перехватит.
-- В строке slash-команды значение не маскируется: пишите `/secret NAME` без самого ключа.
+## Limitations
+
+- This guards against **accidental** leaks. It does not protect against a malicious model or a prompt injection. A command that uses a placeholder can send the key anywhere, or print it encoded (base64, one character at a time), and redaction only catches the exact value.
+- The pane's input field shows what you type on screen. The text still never reaches the model. Use the macOS dialog button if you want masked input.
+- Values shorter than 6 characters are not redacted, so ordinary output stays intact.
+- Only values stored in shhstore are redacted. A key that already sits in a `.env` file but was never stored is visible to the model. Store it once with `/secret`, or paste the `KEY=...` line into the chat and it will be intercepted.
+- Slash command arguments are not redacted. Type `/secret NAME` without the value.
+
+## License
+
+MIT
